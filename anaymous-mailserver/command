@@ -1,9 +1,0 @@
-docker exec -ti mailserver setup email add  test@gitcoins.io
-
-docker exec -ti mailserver setup config dkim
-
-
-
-ldapsearch ldap://localhost:636 -x -D cn=admin,dc=gitcoins,dc=io -w adminpassword -b "dc=gitcoins,dc=io"
-ldapsearch ldap://ldap.gitcoins.io -x -D cn=admin,dc=gitcoins,dc=io -w adminpassword -b "dc=gitcoins,dc=io"
-ldapsearch ldaps://ldap.gitcoins.io -x -D cn=admin,dc=gitcoins,dc=io -w adminpassword -b "dc=gitcoins,dc=io"
