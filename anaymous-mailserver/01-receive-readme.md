@@ -37,6 +37,8 @@ TTL: 3600
 This must be configured at your hosting provider:
 
 - Contact your hosting provider to set a reverse DNS (PTR) record for your server's IP, pointing to `mail.gitcoins.io`.
+- If you use google VM (virtual machine), please first verify the domain ownership by https://search.google.com/search-console/welcome
+- Set the Public DNS PTR Record in the google VM, when you create new VM instance
 
 ---
 
@@ -83,21 +85,27 @@ docker compose  -f 01-receive-compose.yaml down
 docker compose  -f 01-receive-compose.yaml up
 docker ps
 ```
+Add Users:
 
-Send mail to alice@gitcoins.io
+```bash
+docker exec -it mailserver setup email add alice@gitcoins.io
+docker exec -it mailserver setup email add bob@gitcoins.io
+```
 
-```
-swaks --to alice@gitcoins.io --server mail.gitcoins.io --port 25
-```
+Send mail to alice@gitcoins.io from your mail like gmail
 
 Test mail reception with:
 
 ```sh
-telnet mail.gitcoins.io 25
+telnet mail.gitcoins.io 143
 ```
 
-Verify DKIM, SPF, and DMARC at:  
-- [https://www.mail-tester.com/](https://www.mail-tester.com/)  
-- [https://www.dmarcian.com/dkim-inspector/](https://www.dmarcian.com/dkim-inspector/)  
+Authenticate and list messages
+```sh
+a login alice@gitcoins.io your_password
+b select inbox
+c fetch 1 body[text]  # Fetch the first email
+d logout
+```
 
 After these steps, your mail server should correctly receive emails for `gitcoins.io`. 🚀
