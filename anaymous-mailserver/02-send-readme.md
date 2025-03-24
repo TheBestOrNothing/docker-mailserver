@@ -42,6 +42,19 @@ After adding your domain, Mailgun will provide DNS records that need to be added
 3. Click **Verify DNS Settings**.
 4. If everything is correct, you will see **green checkmarks ✅**.
 
+```bash
+swaks --auth \
+	--server smtp.mailgun.org \
+	--port 587 \
+	--au postmaster@mail.gitcoins.io\
+	--ap "password for postmaster user" \
+	--to wofwoofwooofwoooof@gmail.com \
+	--h-Subject: "Hello" \
+	--body 'Testing some Mailgun awesomness!'
+```
+
+If everything is configured correctly, you should receive an email via Mailgun.
+
 ---
 
 ## **Step 5: Set Up Mailgun Credentials**
@@ -49,7 +62,7 @@ Before configuring `docker-mailserver`, ensure you have a **Mailgun SMTP usernam
 
 - **SMTP Server**: `smtp.mailgun.org`
 - **Port**: `587` (TLS) or `465` (SSL)
-- **Username**: `postmaster@yourdomain.com`
+- **Username**: `postmaster@mail.gitcoins.io`
 - **Password**: (Found in Mailgun dashboard)
 
 ---
@@ -62,7 +75,7 @@ Modify or create the environment file (`02-send-mailserver.env`) for `docker-mai
 # Enable SMTP Relay
 RELAY_HOST=smtp.mailgun.org
 RELAY_PORT=587
-RELAY_USER=postmaster@yourdomain.com
+RELAY_USER=postmaster@mail.gitcoins.io
 RELAY_PASSWORD=your-mailgun-password
 ```
 
@@ -77,16 +90,32 @@ docker compose  -f 02-send-compose.yaml up
 docker ps
 ```
 
+Add Users:
+
+```bash
+docker exec -it mailserver setup email add alice@gitcoins.io
+docker exec -it mailserver setup email add bob@gitcoins.io
+```
+
 ---
 
 ## **Step 8: Verify Mail Sending**
 To test email sending via Mailgun, you can use **swaks** inside the running `mailserver` container:
 
-```sh
-docker exec -it mailserver swaks --to recipient@example.com --from postmaster@yourdomain.com --server smtp.mailgun.org --auth LOGIN --auth-user postmaster@yourdomain.com --auth-password your-mailgun-password --tls
+```bash
+swaks \
+  --to wofwoofwooofwoooof@gmail.com \
+  --from alice@gitcoins.io \
+  --server mail.gitcoins.io \
+  --port 587 \
+  --auth LOGIN \
+  --auth-user alice@gitcoins.io \
+  --auth-password "your_password_here" \
+  --no-tls \
+	--h-Subject: "Hello" \
+	--body 'Testing some Mailgun awesomness!'
 ```
-
-If everything is configured correctly, you should receive an email via Mailgun.
+If everything is configured correctly, you should receive an email via alice@gitcoins.
 
 ---
 
@@ -98,3 +127,57 @@ If everything is configured correctly, you should receive an email via Mailgun.
   ```sh
   docker logs mailserver
   ```
+---
+
+#### **1. Verify Dovecot Authentication**
+Open the Dovecot authentication configuration file:
+
+```bash
+docker exec -it mailserver cat /etc/dovecot/conf.d/10-master.conf
+```
+Find this section service auth to allow Postfix to use Dovecot authentication:
+
+```plaintext
+service auth {
+
+  # Postfix smtp-auth
+  unix_listener /dev/shm/sasl-auth.sock {
+    mode = 0660
+    user = postfix
+    group = postfix
+  }
+
+}
+```
+
+To make sure the sock is exit in the contianer.
+
+```bash
+docker exec -it mailserver ls -l /dev/shm/sasl-auth.sock
+```
+srw-rw---- 1 postfix postfix 0 Mar 24 11:38 /dev/shm/sasl-auth.sock
+
+---
+
+#### **2. Verify configure Postfix to Use Dovecot SASL**
+Edit the Postfix main configuration file:
+
+```bash
+docker exec -it mailserver cat /etc/postfix/main.cf
+```
+
+To make sure the following lines in Postfix main.cf used by Dovecot for authentication:
+
+```plaintext
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = private/auth
+smtpd_sasl_auth_enable = yes
+smtpd_sasl_security_options = noanonymous
+smtpd_sasl_local_domain = $myhostname
+smtpd_recipient_restrictions =
+    permit_sasl_authenticated,
+    permit_mynetworks,
+    reject_unauth_destination
+```
+
+---
