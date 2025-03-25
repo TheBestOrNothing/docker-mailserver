@@ -100,6 +100,8 @@ Modify or create the environment file (`03-tls-mailserver.env`) for `docker-mail
 # manual => Let's you manually specify locations of your SSL certificates for non-standard cases
 # self-signed => Enables self-signed certificates
 SSL_TYPE=letsencrypt
+VIRTUAL_HOST=mail.gitcoins.io
+LETSENCRYPT_HOST=mail.gitcoins.io
 ```
 
 ---
@@ -109,7 +111,7 @@ Restart the `docker-mailserver` container to apply changes:
 
 ```sh
 docker compose  -f 03-tls-compose.yaml down
-docker compose  -f 02-tls-compose.yaml up
+docker compose  -f 03-tls-compose.yaml up
 docker ps
 ```
 
@@ -128,6 +130,15 @@ To test **explicit TLS (STARTTLS)** and **implicit TLS (SMTPS)** with `swaks`, y
 ---
 
 ##### 4.1 **Explicit TLS (STARTTLS) — Port 587**
+
+```yaml
+ports:
+  - "25:25"    # SMTP  (explicit TLS => STARTTLS, Authentication is DISABLED => use port 465/587 instead)
+  - "143:143"  # IMAP4 (explicit TLS => STARTTLS)
+  - "465:465"  # ESMTP (implicit TLS)
+  - "587:587"  # ESMTP (explicit TLS => STARTTLS)
+  - "993:993"  # IMAP4 (implicit TLS)
+```
 
 This starts as plaintext, then upgrades to TLS using `STARTTLS`.
 
@@ -163,31 +174,16 @@ swaks \
   --auth LOGIN \
   --auth-user alice@gitcoins.io \
   --auth-password alice \
-  --tls \
-  --protocol SMTPS \
+  --tls-on-connect \
   --h-Subject: "Hello with Implicit TLS" \
   --body 'Testing implicit TLS (SMTPS) via swaks!'
 ```
 
-- `--protocol SMTPS` tells swaks to use implicit TLS from the beginning.
-- Port `465` is the standard port for SMTPS (implicit TLS).
-
----
-
-## 🔎 Notes
-
-- Make sure your mail server (e.g. `docker-mailserver`) is configured to listen and serve TLS on the corresponding ports (587 for STARTTLS, 465 for SMTPS).
-- To verify that the TLS certificate is working, you can add `-tls-cert` to get certificate info:
-
-```bash
-swaks --server mail.gitcoins.io --port 465 --tls --protocol SMTPS --tls-cert
-```
+Please see the diff of --tls and --tls-on-connect at the end of this page.
 
 ---
 
 #### 5. Verify Mail receiving with stl
-
-
 
 To **receive mail securely with explicit and implicit TLS**, you'll typically be using **IMAP or POP3**. `swaks` is designed for sending mail (SMTP), so it doesn’t handle receiving. For receiving, you’ll use tools like:
 
@@ -237,43 +233,8 @@ Same commands as above apply after successful handshake.
 
 ---
 
-##### 5.3 **Receiving Mail with POP3 over Explicit TLS (STARTTLS) — Port 110**
 
-```bash
-openssl s_client -connect mail.gitcoins.io:110 -starttls pop3
-```
-
-Then:
-
-```
-USER alice@gitcoins.io
-PASS alice
-LIST
-RETR 1
-QUIT
-```
-
----
-
-##### 5.4 **Receiving Mail with POP3 over Implicit TLS — Port 995**
-
-```bash
-openssl s_client -connect mail.gitcoins.io:995
-```
-
-And then:
-
-```
-USER alice@gitcoins.io
-PASS alice
-LIST
-RETR 1
-QUIT
-```
-
----
-
-## 🔐 Optional: Verifying TLS Certificate
+##### Optional: Verifying TLS Certificate
 
 To print cert info, add:
 
@@ -288,3 +249,75 @@ openssl s_client -connect mail.gitcoins.io:993 -showcerts
 If your goal is:
 - **Secure mail protocols** like SMTP/IMAP over TLS: ✔ already supported by docker-mailserver (ports 465, 587, 993)
 - **Secure web access** to a roundcute interface: Use `nginx-proxy` + `acme-companion` is ready for use
+
+
+### **Difference Between `--tls-on-connect` and `--tls` in `swaks`**
+The flags control how TLS encryption is negotiated with the SMTP server. Here’s the breakdown:
+
+| **Flag**               | **Behavior**                                                                 | **Used For**               |
+|------------------------|-----------------------------------------------------------------------------|----------------------------|
+| `--tls-on-connect`     | Starts TLS **immediately** upon connection (before SMTP handshake).          | Port **465 (SMTPS)**       |
+| `--tls`                | Uses **STARTTLS** (upgrades an existing plaintext connection to TLS).       | Port **587 (Submission)**  |
+
+---
+
+### **When to Use Which?**
+#### **1. `--tls-on-connect` (Port 465)**
+- **How it works**:  
+  - TLS encryption begins **before** any SMTP commands (like `EHLO`) are sent.  
+  - The entire session is encrypted from the start (aka **"implicit TLS"**).  
+- **Example**:  
+  ```bash
+  swaks \
+    --server mail.gitcoins.io:465 \
+    --tls-on-connect \  # <-- Critical for port 465
+    --auth LOGIN \
+    --auth-user alice@gitcoins.io
+  ```
+
+#### **2. `--tls` (Port 587)**
+- **How it works**:  
+  - Connects in plaintext, then upgrades to TLS **after** `EHLO` using `STARTTLS`.  
+  - The server must advertise `STARTTLS` in its `EHLO` response.  
+- **Example**:  
+  ```bash
+  swaks \
+    --server mail.gitcoins.io:587 \
+    --tls \  # <-- Uses STARTTLS
+    --auth LOGIN \
+    --auth-user alice@gitcoins.io
+  ```
+
+---
+
+### **Why `--tls-on-connect` Worked for You**
+- Your server expects **implicit TLS** on port 465 (standard for SMTPS).  
+- `--tls` (STARTTLS) fails because:  
+  - The server isn’t listening for plaintext commands first.  
+  - You’d see errors like:  
+    ```plaintext
+    SSL_accept error: wrong version number
+    ```
+
+---
+
+### **Key Takeaways**
+1. **Port 465** → Always use `--tls-on-connect`.  
+2. **Port 587** → Use `--tls` (STARTTLS).  
+3. Mixing them up causes handshake failures.  
+
+---
+
+### **Debugging Tips**
+- Check server capabilities:  
+  ```bash
+  openssl s_client -connect mail.gitcoins.io:465 -quiet
+  EHLO example.com  # Should show "250-STARTTLS" if STARTTLS is supported
+  ```
+- Test both ports:  
+  ```bash
+  swaks --server mail.gitcoins.io:587 --tls --auth LOGIN...
+  swaks --server mail.gitcoins.io:465 --tls-on-connect --auth LOGIN...
+  ```
+
+Let me know if you need further clarification! 🚀
