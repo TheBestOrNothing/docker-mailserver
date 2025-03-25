@@ -4,7 +4,9 @@ services:
     container_name: mailserver
     # Provide the FQDN of your mail server here (Your DNS MX record should point to this value)
     hostname: mail.gitcoins.io
-    env_file: 03-tls-mailserver.env
+    env_file: 04-roundcube-mailserver.env
+    depends_on:
+      - nginx-proxy-acme
     # More information about the mail-server ports:
     # https://docker-mailserver.github.io/docker-mailserver/latest/config/security/understanding-the-ports/
     ports:
@@ -53,6 +55,8 @@ services:
     image: nginxproxy/acme-companion
     container_name: nginx-proxy-acme
     restart: always
+    depends_on:
+      - nginx-proxy
     environment:
       # When `volumes_from: [nginx-proxy]` is not supported,
       # reference the _reverse-proxy_ `container_name` here:
@@ -87,6 +91,7 @@ services:
     hostname: roundcube.gitcoins.io
     depends_on:
       - roundcubedb
+      - mailserver
     links:
       - roundcubedb
     volumes:
