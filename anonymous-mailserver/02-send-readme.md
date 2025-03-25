@@ -1,5 +1,7 @@
 To configure **docker-mailserver** to send mail using **Mailgun** as a third-party SMTP relay.
 
+https://docker-mailserver.github.io/docker-mailserver/latest/config/advanced/mail-forwarding/relay-hosts/
+
 Below is a step-by-step guide to adding a new domain in **Mailgun** and setting up **DKIM, DMARC, and SPF** records in your DNS.
 
 ---
