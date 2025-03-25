@@ -48,7 +48,7 @@ swaks --auth \
 	--port 587 \
 	--au postmaster@mail.gitcoins.io\
 	--ap "password for postmaster user" \
-	--to wofwoofwooofwoooof@gmail.com \
+	--to user@gmail.com \
 	--h-Subject: "Hello" \
 	--body 'Testing some Mailgun awesomness!'
 ```
@@ -104,7 +104,7 @@ To test email sending via Mailgun, you can use **swaks** inside the running `mai
 
 ```bash
 swaks \
-  --to wofwoofwooofwoooof@gmail.com \
+  --to user@gmail.com \
   --from alice@gitcoins.io \
   --server mail.gitcoins.io \
   --port 587 \
@@ -112,8 +112,8 @@ swaks \
   --auth-user alice@gitcoins.io \
   --auth-password "your_password_here" \
   --no-tls \
-	--h-Subject: "Hello" \
-	--body 'Testing some Mailgun awesomness!'
+  --h-Subject: "Hello" \
+  --body 'Testing some Mailgun awesomness!'
 ```
 If everything is configured correctly, you should receive an email via alice@gitcoins.
 

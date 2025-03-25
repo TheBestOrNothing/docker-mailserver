@@ -1,0 +1,71 @@
+services:
+  mailserver:
+    image: ghcr.io/docker-mailserver/docker-mailserver:latest
+    container_name: mailserver
+    # Provide the FQDN of your mail server here (Your DNS MX record should point to this value)
+    hostname: mail.gitcoins.io
+    env_file: 03-tls-mailserver.env
+    # More information about the mail-server ports:
+    # https://docker-mailserver.github.io/docker-mailserver/latest/config/security/understanding-the-ports/
+    ports:
+      - "25:25"    # SMTP  (explicit TLS => STARTTLS, Authentication is DISABLED => use port 465/587 instead)
+      - "143:143"  # IMAP4 (explicit TLS => STARTTLS)
+      - "465:465"  # ESMTP (implicit TLS)
+      - "587:587"  # ESMTP (explicit TLS => STARTTLS)
+      - "993:993"  # IMAP4 (implicit TLS)
+    volumes:
+      - ./docker-data/dms/mail-data/:/var/mail/
+      - ./docker-data/dms/mail-state/:/var/mail-state/
+      - ./docker-data/dms/mail-logs/:/var/log/mail/
+      - ./docker-data/dms/config/:/tmp/docker-mailserver/
+      - /etc/localtime:/etc/localtime:ro
+      - ./docker-data/acme-companion/certs/:/etc/letsencrypt/live/:ro
+    restart: always
+    stop_grace_period: 1m
+    # Uncomment if using `ENABLE_FAIL2BAN=1`:
+    # cap_add:
+    #   - NET_ADMIN
+    healthcheck:
+      test: "ss --listening --tcp | grep -P 'LISTEN.+:smtp' || exit 1"
+      timeout: 3s
+      retries: 0
+
+  # If you don't yet have your own `nginx-proxy` and `acme-companion` setup,
+  # here is an example you can use:
+  reverse-proxy:
+    image: nginxproxy/nginx-proxy
+    container_name: nginx-proxy
+    restart: always
+    ports:
+      # Port  80: Required for HTTP-01 challenges to `acme-companion`.
+      # Port 443: Only required for containers that need access over HTTPS. TLS-ALPN-01 challenge not supported.
+      - "80:80"
+      - "443:443"
+    volumes:
+      # `certs/`:      Managed by the `acme-companion` container (_read-only_).
+      # `docker.sock`: Required to interact with containers via the Docker API.
+      - ./docker-data/nginx-proxy/html/:/usr/share/nginx/html/
+      - ./docker-data/nginx-proxy/vhost.d/:/etc/nginx/vhost.d/
+      - ./docker-data/acme-companion/certs/:/etc/nginx/certs/:ro
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+
+  acme-companion:
+    image: nginxproxy/acme-companion
+    container_name: nginx-proxy-acme
+    restart: always
+    environment:
+      # When `volumes_from: [nginx-proxy]` is not supported,
+      # reference the _reverse-proxy_ `container_name` here:
+      # - DEFAULT_EMAIL=alice@gitcoins.io
+      - NGINX_PROXY_CONTAINER=nginx-proxy
+    volumes:
+      # `html/`:       Write ACME HTTP-01 challenge files that `nginx-proxy` will serve.
+      # `vhost.d/`:    To enable web access via `nginx-proxy` to HTTP-01 challenge files.
+      # `certs/`:      To store certificates and private keys.
+      # `acme-state/`: To persist config and state for the ACME provisioner (`acme.sh`).
+      # `docker.sock`: Required to interact with containers via the Docker API.
+      - ./docker-data/nginx-proxy/html/:/usr/share/nginx/html/
+      - ./docker-data/nginx-proxy/vhost.d/:/etc/nginx/vhost.d/
+      - ./docker-data/acme-companion/certs/:/etc/nginx/certs/:rw
+      - ./docker-data/acme-companion/acme-state/:/etc/acme.sh/
+      - /var/run/docker.sock:/var/run/docker.sock:ro
