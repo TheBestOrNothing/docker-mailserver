@@ -80,11 +80,32 @@ Create or edit this file:
   $config['oauth_login_redirect'] = false;
 ```
 
+Note: please mount the oauth2 configuration to the roundcube container. Add following voluems info to the mailserver in the compose file.
+
+```yaml
+      - ./docker-data/roundcube/config/:/var/roundcube/config/:rw
+```
+
+
 ---
 
 ## ✅ Test It
 
-Option 1: To click `MetaMask` login with web ui `https://roundcube.gitcoins.io`
+### Option 1: Test with MetaMask account
+
+Add your Metamask accout as new users:
+
+```bash
+docker exec -it mailserver setup email add 0x4477610799e7910f0e40f64da702aa9ffcf929ac@gitcoins.io
+```
+
+To click `MetaMask` to login with web ui `https://roundcube.gitcoins.io`
+
+Scan the QR code by MetaMask mobile or use Metamask plugin to connect and sign
+
+The MetaMask OIDC server will verify the signment and then return the access token to login
+
+### Option 2: Test with OIDC token 
 
 ```bash
   # Shell into your DMS container:
