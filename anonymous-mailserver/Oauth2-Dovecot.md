@@ -39,23 +39,39 @@ So, the **flow changes**:
 
 ---
 
-### 🔧 Example Dovecot Config for OAuth2 (simplified)
+### 🔧 Verify Oauth2 Config for Dovecot (simplified)
+
+```bash
+docker exec -it mailserver dovecot -n
+```
+
+Oauth2 auth mechanisms, passdb and userdb info
 
 ```conf
-auth_mechanisms = xoauth2
+
+auth_mechanisms = plain login oauthbearer xoauth2
 
 passdb {
+  args = scheme=SHA512-CRYPT username_format=%u /etc/dovecot/userdb
+  driver = passwd-file
+  mechanisms = plain login
+}
+
+passdb {
+  args = /etc/dovecot/dovecot-oauth2.conf.ext
   driver = oauth2
-  args = /etc/dovecot/oauth2.conf.ext
+  mechanisms = xoauth2 oauthbearer
 }
 
 userdb {
-  driver = static
-  args = uid=vmail gid=vmail home=/var/mail/vhosts/%d/%n
+  args = username_format=%u /etc/dovecot/userdb
+  default_fields = uid=docker gid=docker home=/var/mail/%d/%u/home/
+  driver = passwd-file
 }
+
 ```
 
-In `/etc/dovecot/oauth2.conf.ext`, you'd define how Dovecot verifies tokens, e.g., via introspection URL or JWT public keys.
+In `/etc/dovecot/oauth2.conf.ext`, you'd find how Dovecot verifies tokens, e.g., via introspection URL or JWT public keys.
 
 ---
 

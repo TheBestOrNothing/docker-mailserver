@@ -91,7 +91,45 @@ Note: please mount the oauth2 configuration to the roundcube container. Add foll
 
 ## ✅ Test It
 
-### Option 1: Test with MetaMask account
+### 🔧 Verify Oauth2 Config for Dovecot (simplified)
+
+```bash
+docker exec -it mailserver dovecot -n
+```
+
+Oauth2 auth mechanisms, passdb and userdb info
+
+```conf
+
+auth_mechanisms = plain login oauthbearer xoauth2
+
+passdb {
+  args = scheme=SHA512-CRYPT username_format=%u /etc/dovecot/userdb
+  driver = passwd-file
+  mechanisms = plain login
+}
+
+passdb {
+  args = /etc/dovecot/dovecot-oauth2.conf.ext
+  driver = oauth2
+  mechanisms = xoauth2 oauthbearer
+}
+
+userdb {
+  args = username_format=%u /etc/dovecot/userdb
+  default_fields = uid=docker gid=docker home=/var/mail/%d/%u/home/
+  driver = passwd-file
+}
+
+```
+
+In `/etc/dovecot/oauth2.conf.ext`, you'd find how Dovecot verifies tokens, e.g., via introspection URL or JWT public keys.
+
+---
+
+### Option 1: Test with MetaMask Mobile App 
+
+You should see an **OAuth2 login button for MetaMask**. It will redirect you to the OIDC login page and return to Roundcube after authentication.
 
 Add your Metamask accout as new users:
 
@@ -103,16 +141,30 @@ To click `MetaMask` to login with web ui `https://roundcube.gitcoins.io`
 
 Scan the QR code by MetaMask mobile or use Metamask plugin to connect and sign
 
-The MetaMask OIDC server will verify the signment and then return the access token to login
+The MetaMask OIDC server will verify the signment and then return the access token for login
 
-### Option 2: Test with OIDC token 
+### Option 2: Test with OIDC token (unable to verify)
+
+1. Retrieve the access_token by code
+
+```bash
+curl -X POST https://oidc.coinsgpt.io/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=authorization_code" \
+  -d "code=ebzKnEhKQzv3NSwcuJr9pg8mAZ_6sQ5Fw2pr7_G_yKs" \
+  -d "redirect_uri=https://roundcube.gitcoins.io/index.php/login/oauth" \
+  -d "client_id=CLIENT" \
+  -d "client_secret=SECRET"
+```
+
+2. Retrieve the access_token by code
 
 ```bash
   # Shell into your DMS container:
-  docker exec -it dms bash
+  docker exec -it mailserver /bin/bash
 
   # Adjust these variables for the methods below to use:
-  export AUTH_METHOD='OAUTHBEARER' USER_ACCOUNT='hello@example.com' ACCESS_TOKEN='DMS_YWNjZXNzX3Rva2Vu'
+  export AUTH_METHOD='OAUTHBEARER' USER_ACCOUNT='0x4477610799e7910f0e40f64da702aa9ffcf929ac@gitcoins.io' ACCESS_TOKEN='aZQ9FamBfuIvtv5IIME6JtWUxeJcfgvd'
 
   # Authenticate via IMAP (Dovecot):
   curl --silent --url 'imap://localhost:143' \
@@ -127,4 +179,3 @@ The MetaMask OIDC server will verify the signment and then return the access tok
       --mail-from "${USER_ACCOUNT}" --mail-rcpt "${USER_ACCOUNT}" --upload-file - <<< 'RFC 5322 content - not important' \
       && grep "postfix/submission/smtpd.*, sasl_method=${AUTH_METHOD}, sasl_username=${USER_ACCOUNT}" /var/log/mail/mail.log
   ```
-You should see an **OAuth2 login button for MetaMask**. It will redirect you to the OIDC login page and return to Roundcube after authentication.

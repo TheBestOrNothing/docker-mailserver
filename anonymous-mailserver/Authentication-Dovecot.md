@@ -42,26 +42,55 @@ In Dovecot, **user databases** and **password databases** serve different but co
 
 ---
 
-### 🧠 Example Config (passwd-file + static userdb):
+### 🔧 Verify Dovecot Config for Dovecot (simplified)
 
-```conf
-# passdb: authenticates user
-passdb {
-  driver = passwd-file
-  args = /etc/dovecot/users
-}
-
-# userdb: sets mail location
-userdb {
-  driver = static
-  args = uid=vmail gid=vmail home=/var/mail/vhosts/%d/%n
-}
+```bash
+docker exec -it mailserver dovecot -n
 ```
 
-- `/etc/dovecot/users` would contain lines like:
-  ```
-  user1@example.com:{SHA512-CRYPT}$6$abcdef...
-  ```
+1. Plain auth mechanisms
+
+```conf
+auth_mechanisms = plain login
+
+userdb {
+  args = username_format=%u /etc/dovecot/userdb
+  default_fields = uid=docker gid=docker home=/var/mail/%d/%u/home/
+  driver = passwd-file
+}
+
+passdb {
+  args = scheme=SHA512-CRYPT username_format=%u /etc/dovecot/userdb
+  driver = passwd-file
+  mechanisms = plain login
+}
+
+```
+
+2. Oauth2 auth mechanisms
+
+```conf
+
+auth_mechanisms = plain login oauthbearer xoauth2
+
+passdb {
+  args = scheme=SHA512-CRYPT username_format=%u /etc/dovecot/userdb
+  driver = passwd-file
+  mechanisms = plain login
+}
+
+passdb {
+  args = /etc/dovecot/dovecot-oauth2.conf.ext
+  driver = oauth2
+  mechanisms = xoauth2 oauthbearer
+}
+
+userdb {
+  args = username_format=%u /etc/dovecot/userdb
+  default_fields = uid=docker gid=docker home=/var/mail/%d/%u/home/
+  driver = passwd-file
+}
+
+```
 
 ---
-
