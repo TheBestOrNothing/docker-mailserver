@@ -86,7 +86,6 @@ Note: please mount the oauth2 configuration to the roundcube container. Add foll
       - ./docker-data/roundcube/config/:/var/roundcube/config/:rw
 ```
 
-
 ---
 
 ## ✅ Test It

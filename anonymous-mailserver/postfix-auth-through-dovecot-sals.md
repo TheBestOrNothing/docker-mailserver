@@ -3,11 +3,11 @@ Based on the Dovecot documentation https://doc.dovecot.org/2.3/configuration_man
 
 # Configuring Postfix Authentication with Dovecot SASL in docker-mailserver
 
-To configure Postfix to use Dovecot's SASL authentication in the [docker-mailserver](https://github.com/docker-mailserver/docker-mailserver) container, follow these steps based on the Dovecot documentation:
+To configure Postfix to use Dovecot's SASL authentication in the [docker-mailserver](https://github.com/docker-mailserver/docker-mailserver) container, please follow these steps based on the Dovecot documentation:
 
-## 1. Lookup Dovecot for SASL Authentication
+## Lookup Dovecot for SASL Authentication
 
-First, ensure Dovecot is configured to provide SASL authentication by adding/modifying these settings in your `config/dovecot/conf.d/10-master.conf` (or appropriate config file in your docker-mailserver setup):
+1. First, ensure Dovecot is configured to provide SASL authentication by adding/modifying these settings in your `config/dovecot/conf.d/10-master.conf` (or appropriate config file in your docker-mailserver setup):
 
 ```bash
 docker exec -it mailserver cat /etc/dovecot/conf.d/10-master.conf
@@ -27,15 +27,18 @@ service auth {
 }
 ```
 
-Make sure the Postfix to use Dovecot authentication, smtpd_sasl_type=dovecot:
+2. Make sure the Postfix to use Dovecot authentication
+- smtpd_sasl_type=dovecot
+- smtpd_sasl_path equal to the unix_listener in the service auth like /dev/shm/sasl-auth.sock:
 
 ```bash
 docker exec -it mailserver postconf -f | grep smtpd_sasl_type
+docker exec -it mailserver postconf -f | grep smtpd_sasl_path
 ```
 
-## 2. Configure Postfix to Use Dovecot SASL
+## How to enable Postfix auth through dovecot's SALS in Docker mail
 
-How to overwrite the configuraiton of postfix? https://docker-mailserver.github.io/docker-mailserver/latest/config/advanced/override-defaults/postfix/
+1. To overwrite the configuraiton of postfix https://docker-mailserver.github.io/docker-mailserver/latest/config/advanced/override-defaults/postfix/
 
 Add these settings to your Postfix configuration (typically in `docker-data/dms/config/postfix-main.cf`):
 
@@ -56,7 +59,7 @@ smtpd_sasl_auth_enable = yes
 smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
 ```
 
-## 3. Example docker-compose.yml Mounts
+2. Mounts the configuration file to docker-mailserver
 
 ```yaml
 services:
