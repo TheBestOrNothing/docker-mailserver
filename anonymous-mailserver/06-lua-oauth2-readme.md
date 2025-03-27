@@ -1,135 +1,133 @@
 ## Introduction
 
-Dovecot has the ability to let users create their own custom user provisioning and authentication providers in https://docker-mailserver.github.io/docker-mailserver/latest/examples/use-cases/auth-lua/ . This allows any data source that can be approached from Lua to be used for authentication, including web servers. It is possible to do more with Dovecot and Lua, but other use cases fall outside of the scope of this documentation page.
-
-```
-Dovecot authentication via Lua scripting is not officially supported in DMS. No assistance will be provided should you encounter any issues.
-
-DMS provides the required packages to support this guide. Note that these packages will be removed should they introduce any future maintenance burden.
-
-The example in this guide relies on the current way in which DMS works with Dovecot configuration files. Changes to this to accommodate new authentication methods such as OpenID Connect will likely break this example in the future. This guide is updated on a best-effort base.
-```
+Dovecot has the ability to let users create their own custom user provisioning and authentication providers via Lua scripting, as detailed in the [official Docker Mailserver documentation](https://docker-mailserver.github.io/docker-mailserver/latest/examples/use-cases/auth-lua/). 
 
 Dovecot's Lua support can be used for user provisioning (userdb functionality) and/or password verification (passdb functionality). Consider using other userdb and passdb options before considering Lua, since Lua does require the use of additional (unsupported) program code that might require maintenance when updating DMS.
 
-Each implementation of Lua-based authentication is custom. Therefore it is impossible to write documentation that covers every scenario. Instead, this page describes a single example scenario. If that scenario is followed, you will learn vital aspects that are necessary to kickstart your own Lua development:
+With this guide, you will learn how to:
 
-- How to override Dovecot's default configuration to disable parts that conflict with your scenario.
-- How to make Dovecot use your Lua script.
-- How to add your own Lua script and any libraries it uses.
-- How to debug your Lua script.
+- Override Dovecot's default configuration to avoid conflicts with your custom authentication.
+- Enable Dovecot to use a Lua script for `userdb` lookups.
+- Write your own Lua script to provision users dynamically.
+- Debug and test Lua-based authentication.
 
+## Bypass the userdb's lookup
 
-## Modify Dovecot's configuration
+This approach enables Dovecot to authenticate users against an external identity provider using the `passdb` (e.g., OAuth2 tokens) and to bypass the usual `userdb` lookup via a Lua script.
 
-???+ example "Add to DMS volumes in `compose.yaml`"
+This is useful for **OAuth2 pass-through authentication**, where you don't want to maintain a local list of valid users.
 
-    ```yaml
-        # All new volumes are marked :ro to configure them as read-only, since their contents are not changed from inside the container
-        volumes:
-          # Configuration override to disable LDAP authentication
-          - ./docker-data/dms/config/dovecot/auth-ldap.conf.ext:/etc/dovecot/conf.d/auth-ldap.conf.ext:ro
-          # Configuration addition to enable Lua authentication
-          - ./docker-data/dms/config/dovecot/auth-lua-httpbasic.conf:/etc/dovecot/conf.d/auth-lua-httpbasic.conf:ro
-          # Directory containing Lua scripts
-          - ./docker-data/dms/config/dovecot/lua/:/etc/dovecot/lua/:ro
-    ```
+📚 **References:**
 
-Create a directory for Lua scripts:
-```bash
-mkdir -p ./docker-data/dms/config/dovecot/lua
-```
+- https://docker-mailserver.github.io/docker-mailserver/latest/examples/use-cases/auth-lua/
+- https://github.com/docker-mailserver/docker-mailserver/issues/2713#issuecomment-2586005068
 
-Create configuration file `./docker-data/dms/config/dovecot/auth-ldap.conf.ext` for LDAP user provisioning:
-```
-userdb {
-  driver = ldap
-  args = /etc/dovecot/dovecot-ldap.conf.ext
-}
-```
+---
 
-Create configuration file `./docker-data/dms/config/dovecot/auth-lua-httpbasic.conf` for Lua user authentication:
-```
+### 1. Define `passdb` and `userdb` using OAuth2 and Lua
+
+Edit or create the file `auth-oauth2.conf.ext` to include the following configuration:
+
+```plaintext
+# Enable additional auth mechanisms
+auth_mechanisms = $auth_mechanisms oauthbearer xoauth2
+
+# Use passdb to validate the OAuth2 access token
 passdb {
+    driver = oauth2
+    mechanisms = xoauth2 oauthbearer
+    args = /etc/dovecot/dovecot-oauth2.conf.ext
+}
+
+# Use Lua script to bypass userdb check
+userdb {
   driver = lua
-  args = file=/etc/dovecot/lua/auth-httpbasic.lua blocking=yes
+  args = file=/etc/dovecot/lua/oauth2-userdb.lua blocking=yes
 }
 ```
 
-That is all for configuring Dovecot.
+📝 **Explanation:**
+- `passdb`: Validates the token using the OAuth2 mechanism.
+- `userdb`: Provides the user’s identity and mail location. We bypass actual checks by dynamically generating the response in Lua.
 
-## Create the Lua script
+---
 
-Create Lua file `./docker-data/dms/config/dovecot/lua/auth-httpbasic.lua` with contents:
+### 2. Bypass `userdb` check via Lua script
+
+Create the Lua script `oauth2-userdb.lua` to allow any authenticated user to proceed, returning fixed UID, GID, and home directory values.
 
 ```lua
-local http_url = "https://nextcloud.example.com/remote.php/dav/"
-local http_method = "PROPFIND"
-local http_status_ok = 207
-local http_status_failure = 401
-local http_header_forwarded_for = "X-Forwarded-For"
-
-package.path = package.path .. ";/etc/dovecot/lua/?.lua"
-local base64 = require("base64")
-
-local http_client = dovecot.http.client {
-  timeout = 1000;
-  max_attempts = 1;
-  debug = false;
-}
-
 function script_init()
-  return 0
+    return 0  -- Initialization success
 end
 
 function script_deinit()
+    -- Optional cleanup logic
 end
 
-function auth_passdb_lookup(req)
-  local auth_request = http_client:request {
-    url = http_url;
-    method = http_method;
-  }
-  auth_request:add_header("Authorization", "Basic " .. (base64.encode(req.user .. ":" .. req.password)))
-  auth_request:add_header(http_header_forwarded_for, req.remote_ip)
-  local auth_response = auth_request:submit()
-  local resp_status = auth_response:status()
-  local reason = auth_response:reason()
+-- This function is called during userdb lookup after successful passdb auth
+function auth_userdb_lookup(req)
+    print("UserDB lookup triggered") -- Useful for debugging
+    print("Username: " .. req.username) -- Log the requested username
 
-  local returnStatus = dovecot.auth.PASSDB_RESULT_INTERNAL_FAILURE
-  local returnDesc = http_method .. " - " .. http_url .. " - " .. resp_status .. " " .. reason
-  if resp_status == http_status_ok
-  then
-    returnStatus = dovecot.auth.PASSDB_RESULT_OK
-    returnDesc = "nopassword=y"
-  elseif resp_status == http_status_failure
-  then
-    returnStatus = dovecot.auth.PASSDB_RESULT_PASSWORD_MISMATCH
-    returnDesc = ""
-  end
-  return returnStatus, returnDesc
+    -- Respond with success, using static UID/GID and dynamically building home/mail paths
+    return dovecot.auth.USERDB_RESULT_OK,
+           "uid=5000 gid=5000 home=/var/mail/coinsgpt" .. req.username .. " mail=maildir:~/Maildir"
 end
 ```
 
-Replace the hostname in the URL to the actual hostname of Nextcloud.
+💡 **Purpose:**
+This bypasses the need to check for the user in a local database. As long as the OAuth2 token is valid (checked in `passdb`), Dovecot considers the user authenticated.
 
-Dovecot [provides an HTTP client for use in Lua](https://doc.dovecot.org/admin_manual/lua/#dovecot.http.client). Aside of that, Lua by itself is pretty barebones. It chooses library compactness over included functionality. You can see that in that a separate library is referenced to add support for Base64 encoding, which is required for [HTTP basic access authentication](https://en.wikipedia.org/wiki/Basic_access_authentication). This library (also a Lua script) is not included. It must be downloaded and stored in the same directory:
+---
 
-```bash
-cd ./docker-data/dms/config/dovecot/lua
-curl -JLO https://raw.githubusercontent.com/iskolbin/lbase64/master/base64.lua
+### 3. Override default Dovecot configuration in Docker Mailserver
+
+Place the configuration and Lua script in your `config/` directory structure like this:
+
+```
+docker-mailserver/
+├── docker-compose.yml
+├── .env
+└── config/
+    └── dovecot/
+        ├── auth-oauth2.conf.ext
+        └── lua/
+            └── oauth2-userdb.lua
 ```
 
-Only use native (pure Lua) libraries as dependencies if possible, such as `base64.lua` from the example. This ensures maximum compatibility. Performance is less of an issue since Lua scripts written for Dovecot probably won't be long or complex, and there won't be a lot of data processing by Lua itself.
+Update `docker-compose.yml` to mount these into the container:
 
-## Debugging a Lua script
-
-To see which Lua version is used by Dovecot if you plan to do something that is version dependent, run:
-
-```bash
-docker exec CONTAINER_NAME strings /usr/lib/dovecot/libdovecot-lua.so|grep '^LUA_'
+```yaml
+services:
+  mailserver:
+    image: docker.io/mailserver/docker-mailserver:latest
+    hostname: mail
+    domainname: yourdomain.com
+    container_name: mailserver
+    env_file: .env
+    volumes:
+      - ./docker-data/dms/config/dovecot/lua/:/etc/dovecot/lua
+      - ./docker-data/dms/config/dovecot/auth-oauth2.conf.ext:/etc/dovecot/conf.d/auth-oauth2.conf.ext
 ```
 
-While Dovecot logs the status of authentication attempts for any passdb backend, Dovecot will also log Lua scripting errors and messages sent to Dovecot's [Lua API log functions](https://doc.dovecot.org/admin_manual/lua/#dovecot.i_debug). The combined DMS log (including that of Dovecot) can be viewed using `docker logs CONTAINER_NAME`. If the log is too noisy (_due to other processes in the container also logging to it_), `docker exec CONTAINER_NAME cat /var/log/mail/mail.log` can be used to view the log of Dovecot and Postfix specifically.
+📦 **Notes:**
+- `lua/`: Directory for your Lua scripts.
+- `auth-oauth2.conf.ext`: Your custom Dovecot auth configuration file.
+- These volumes ensure your configs are injected into the running container.
 
-If working with HTTP in Lua, setting `debug = true;` when initiating `dovecot.http.client` will create debug log messages for every HTTP request and response.
+---
+
+## Summary
+
+If the 0x470a30f6228b22abb33aa915983f8decd5db084a bypass the userdb to login successfully, the mails can been send out from this account via relay, but can not receive the mails, because the address couldn't be found in the postfix and dovecot. The following is message when failure to delivery the mail from gmail to gitcoins.
+
+```
+Your message wasn't delivered to 0x470a30f6228b22abb33aa915983f8decd5db084a@gitcoins.io because the address couldn't be found, or is unable to receive mail.
+```
+
+This guide sets up OAuth2-based authentication in Dovecot while bypassing the traditional `userdb` check using a Lua script. This is especially useful in environments where user identity is managed externally (e.g., through OAuth2 or OpenID Connect), and Dovecot just needs to know the user exists and where to deliver mail.
+
+---
+
+✅ You now have a flexible and scriptable way to authenticate users using modern identity providers in Docker Mailserver.

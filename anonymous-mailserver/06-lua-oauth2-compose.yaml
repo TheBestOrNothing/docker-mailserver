@@ -44,7 +44,7 @@ services:
     container_name: mailserver
     # Provide the FQDN of your mail server here (Your DNS MX record should point to this value)
     hostname: mail.gitcoins.io
-    env_file: 05-oauth2-mailserver.env
+    env_file: 06-lua-oauth2-mailserver.env
     depends_on:
       - nginx-proxy-acme
     # More information about the mail-server ports:
@@ -63,6 +63,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - ./docker-data/acme-companion/certs/:/etc/letsencrypt/live/:ro
       - ./docker-data/dms/config/dovecot/lua/:/etc/dovecot/lua
+      - ./docker-data/dms/config/dovecot/auth-oauth2.conf.ext:/etc/dovecot/conf.d/auth-oauth2.conf.ext
     restart: always
     stop_grace_period: 1m
     # Uncomment if using `ENABLE_FAIL2BAN=1`:
