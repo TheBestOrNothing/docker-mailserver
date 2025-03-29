@@ -1,0 +1,16 @@
+# The root object of the tree, all entries will branch off this one:
+dn: dc=gitcoins,dc=io
+# DN is formed from `gitcoins.io` DNS labels:
+# NOTE: This is just a common convention (not dependent on hostname or any external config)
+objectClass: dcObject
+# Must reference left most component:
+dc: gitcoins
+# It's required to use an `objectClass` that implements a "Structural Class":
+objectClass: organization
+# Value is purely descriptive, not important to tests:
+o: DMS Test
+
+# User accounts will belong to this subtree:
+dn: ou=users,dc=gitcoins,dc=io
+objectClass: organizationalUnit
+ou: users
