@@ -1,29 +1,17 @@
 function script_init()
-    return 0
+    return 0  -- Initialization success
 end
 
 function script_deinit()
+    -- Optional cleanup logic
 end
 
+-- This function is called during userdb lookup after successful passdb auth
 function auth_userdb_lookup(req)
-    print("UserDB lookup triggered")
-    print("Username: " .. req.username)
+    print("UserDB lookup triggered") -- Useful for debugging
+    print("Username: " .. req.username) -- Log the requested username
 
-    local email = req.username
-    local password = "StrongPassword123"  -- Insecure: static password
-
-    -- Build shell command
-    local cmd = "docker exec -i mailserver setup email add " .. email .. " " .. password
-
-    -- Execute it (blocking call)
-    local result = os.execute(cmd)
-    print("Command result: " .. tostring(result))
-
-    -- Build paths
-    local user = string.match(email, "([^@]+)")
-    local home = "/var/mail/" .. user
-    local mail = "maildir:~/Maildir"
-
+    -- Respond with success, using static UID/GID and dynamically building home/mail paths
     return dovecot.auth.USERDB_RESULT_OK,
-           "uid=5000 gid=5000 home=" .. home .. " mail=" .. mail
+           "uid=5000 gid=5000 home=/var/mail/coinsgpt" .. req.username .. " mail=maildir:~/Maildir"
 end
