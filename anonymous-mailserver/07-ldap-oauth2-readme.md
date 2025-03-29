@@ -182,9 +182,115 @@ mailQuota: 10240
 
 ---
 
-Let me know if you want to:
-- Integrate **OAuth2 token-based login** with Dovecot
-- Add a GUI (e.g. phpLDAPadmin or LDAP Account Manager)
-- Auto-provision users from an external IdP
+## ✅ **step 6: Verify LDAP Server is Active**
 
-Want me to generate a working `docker-compose.override.yml` or full `ldif` for the LDAP users?
+
+### 🔹 6.1 Ping the LDAP Server
+```bash
+ping ldap.gitcoins.io
+```
+
+---
+
+### 🔹 6.2 Test LDAP Bind (Login) using `ldapwhoami`
+```bash
+ldapwhoami -x \
+  -H ldap://ldap.gitcoins.io \
+  -D "cn=admin,dc=gitcoins,dc=io" \
+  -w adminpassword
+```
+
+Expected output:
+```
+dn:cn=admin,dc=gitcoins,dc=io
+```
+
+---
+
+## ✅ **step 7: Case-by-Case Verification of LDAP Query Filters**
+
+---
+
+### 🧪 7.1 Test `LDAP_QUERY_FILTER_USER`
+
+#### **Command:**
+```bash
+ldapsearch -x \
+  -H ldap://ldap.gitcoins.io \
+  -D "cn=admin,dc=gitcoins,dc=io" \
+  -w adminpassword \
+  -b "ou=users,dc=gitcoins,dc=io" \
+  "(&(mail=alice@gitcoins.io)(objectClass=PostfixBookMailAccount)(mailEnabled=TRUE))"
+```
+
+---
+
+### 🧪 7.2 Test `LDAP_QUERY_FILTER_GROUP`
+
+#### **Command:**
+```bash
+ldapsearch -x \
+  -H ldap://ldap.gitcoins.io \
+  -D "cn=admin,dc=gitcoins,dc=io" \
+  -w adminpassword \
+  -b "ou=users,dc=gitcoins,dc=io" \
+  "(&(mailGroupMember=alice@gitcoins.io)(objectClass=PostfixBookMailAccount)(mailEnabled=TRUE))"
+```
+
+---
+
+### 🧪 7.3 Test `LDAP_QUERY_FILTER_ALIAS`
+
+#### **Command:**
+```bash
+ldapsearch -x \
+  -H ldap://ldap.gitcoins.io \
+  -D "cn=admin,dc=gitcoins,dc=io" \
+  -w adminpassword \
+  -b "ou=users,dc=gitcoins,dc=io" \
+  "(&(mailAlias=alice@gitcoins.io)(|(objectClass=PostfixBookMailForward)(&(objectClass=PostfixBookMailAccount)(mailEnabled=TRUE))))"
+```
+
+---
+
+### 🧪 7.4 Test `LDAP_QUERY_FILTER_DOMAIN`
+
+#### **Command (Simplified Test):**
+```bash
+ldapsearch -x \
+  -H ldap://ldap.gitcoins.io \
+  -D "cn=admin,dc=gitcoins,dc=io" \
+  -w adminpassword \
+  -b "ou=users,dc=gitcoins,dc=io" \
+  "(|(mail=alice@gitcoins.io)(mailAlias=alice@gitcoins.io)(mailGroupMember=alice@gitcoins.io))"
+```
+
+---
+
+### 🧪 7.5 Test `DOVECOT_USER_FILTER`
+
+#### **Command:**
+```bash
+ldapsearch -x \
+  -H ldap://ldap.gitcoins.io \
+  -D "cn=admin,dc=gitcoins,dc=io" \
+  -w adminpassword \
+  -b "ou=users,dc=gitcoins,dc=io" \
+  "(&(userID=alice)(objectClass=PostfixBookMailAccount))"
+```
+
+---
+
+### 🧪 7.6 Test `DOVECOT_PASS_FILTER`
+
+#### **Command:**
+```bash
+ldapsearch -x \
+  -H ldap://ldap.gitcoins.io \
+  -D "cn=admin,dc=gitcoins,dc=io" \
+  -w adminpassword \
+  -b "ou=users,dc=gitcoins,dc=io" \
+  "(&(userID=alice)(objectClass=PostfixBookMailAccount))"
+```
+
+---
